@@ -8,6 +8,7 @@ import { Slider } from "./ui/slider";
 import { TrendingUp, Pause, Play, Settings, Sparkles, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { posthog } from "posthog-js";
 
 interface SellerListing {
   id: string;
@@ -91,6 +92,11 @@ export function SellerView() {
       setDailyBudget(listing.dailyBudget || 10);
     }
     setShowPromoteDialog(true);
+    posthog.capture(listing.promoted ? "promotion_settings_opened" : "promote_clicked", {
+      listing_id: listing.id,
+      listing_title: listing.title,
+      listing_price: listing.price,
+    });
   };
 
   const handleConfirmPromotion = () => {
@@ -101,10 +107,24 @@ export function SellerView() {
       timestamp: new Date().toISOString()
     });
 
+    posthog.capture("promotion_confirmed", {
+      listing_id: selectedListing?.id,
+      listing_title: selectedListing?.title,
+      max_cpc: maxCPC,
+      daily_budget: dailyBudget,
+      is_edit: selectedListing?.promoted,
+    });
+
     setShowPromoteDialog(false);
     setShowFakedoorDialog(true);
     setNotificationEmail("");
     setEmailSubmitted(false);
+
+    posthog.capture("fakedoor_shown", {
+      listing_id: selectedListing?.id,
+      max_cpc: maxCPC,
+      daily_budget: dailyBudget,
+    });
   };
 
   const handleNotificationSubmit = (e: React.FormEvent) => {
@@ -118,6 +138,14 @@ export function SellerView() {
       timestamp: new Date().toISOString()
     });
 
+    posthog.capture("email_submitted", {
+      listing_id: selectedListing?.id,
+      listing_title: selectedListing?.title,
+      max_cpc: maxCPC,
+      daily_budget: dailyBudget,
+      email_domain: notificationEmail.split("@")[1],
+    });
+
     setEmailSubmitted(true);
     toast.success("Dziękujemy! Powiadomimy Cię gdy funkcja będzie dostępna.");
 
@@ -128,11 +156,17 @@ export function SellerView() {
   };
 
   const handleTogglePromotion = (listing: SellerListing) => {
+    const newStatus = listing.promotionStatus === "active" ? "paused" : "active";
     setListings(listings.map(l =>
       l.id === listing.id
-        ? { ...l, promotionStatus: l.promotionStatus === "active" ? "paused" : "active" }
+        ? { ...l, promotionStatus: newStatus }
         : l
     ));
+    posthog.capture("promotion_toggled", {
+      listing_id: listing.id,
+      listing_title: listing.title,
+      new_status: newStatus,
+    });
   };
 
   const promotedCount = listings.filter(l => l.promoted).length;
@@ -148,7 +182,7 @@ export function SellerView() {
               Promowane oferty: {promotedCount}/{maxPromoted} | Saldo: {balance.toFixed(2)} PLN
             </p>
           </div>
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => posthog.capture("deposit_clicked", { balance })}>
             Doładuj konto
           </Button>
         </div>
@@ -195,7 +229,13 @@ export function SellerView() {
                 <Slider
                   id="max-cpc"
                   value={[maxCPC]}
-                  onValueChange={([value]) => setMaxCPC(value)}
+                  onValueChange={([value]) => {
+                    setMaxCPC(value);
+                    posthog.capture("cpc_changed", {
+                      listing_id: selectedListing?.id,
+                      value,
+                    });
+                  }}
                   min={0.5}
                   max={2}
                   step={0.05}
@@ -223,7 +263,13 @@ export function SellerView() {
                 <Slider
                   id="daily-budget"
                   value={[dailyBudget]}
-                  onValueChange={([value]) => setDailyBudget(value)}
+                  onValueChange={([value]) => {
+                    setDailyBudget(value);
+                    posthog.capture("budget_changed", {
+                      listing_id: selectedListing?.id,
+                      value,
+                    });
+                  }}
                   min={5}
                   max={100}
                   step={5}
@@ -327,6 +373,10 @@ export function SellerView() {
                     type="button"
                     variant="ghost"
                     onClick={() => {
+                      posthog.capture("fakedoor_closed", {
+                        listing_id: selectedListing?.id,
+                        had_email: false,
+                      });
                       setShowFakedoorDialog(false);
                       setSelectedListing(null);
                     }}
